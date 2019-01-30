@@ -17,11 +17,12 @@ REMOVE_UNIT = re.compile("(TUNIT[0-9]+\s*=\s*'\s*)|(\s*')|(\s+)")
 AS_REGEX = re.compile(".+\s+as\s+.+")
 INCLUDE_NAME_REGEX = re.compile(".+(?=\sas)")
 ALIAS_REGEX = re.compile("(?<=as\s).+")
-fileRegex = re.compile("from\s+[^\s]+\n")
-rfileRegex = re.compile("(from)|(\s+)|\n")
+fileRegex = re.compile("from\s+[^\s]+\n|$")
+rfileRegex = re.compile("(from)|(\s+)|\n|$")
 NUM_REGEX = re.compile("[0-9]+")
 IN_REGEX = re.compile(".+-i")
 OUT_REGEX = re.compile(".+-o")
+INCLUDE_ALL = re.compile("\s*-all\s*$|\n")
 
 class fitsParser:
 
@@ -31,6 +32,7 @@ class fitsParser:
         self.include = list(include)
         self.inputs = list()
         self.outputs = list()
+        self.includeAll = False
 
         if(includefile != None):
             infile = open(includefile, "r")
@@ -48,9 +50,17 @@ class fitsParser:
         self.hduList = fits.open(self.filename)
         self.tableinfo = self.parseHeader(str(self.hduList[1].header), self.include) #Gather the collum names from the header file
         
+        if self.includeAll:
+            Allinfo = self.parseHeader(str(self.hduList[1].header), list())
+            for field in Allinfo.keys():
+                if field not in self.tableinfo:
+                    self.tableinfo[field]=Allinfo[field]
+               
+        
         for name in self.tableinfo.keys():
             self.data[self.tableinfo.get(name).get('alias')] = self.hduList[1].data.field(name).byteswap().newbyteorder()
-        #print(self.data)   
+        
+        
         
         
     #Parse Header takes the header string of a fits file and depending on the arguments passed, retrives needed information
@@ -66,7 +76,7 @@ class fitsParser:
         unitNumbs = fitsParser.findAndRemove(header, UNIT_NUMBMATCH, REMOVE_UNITNUMB)
         units = fitsParser.findAndRemove(header, UNIT_MATCH, REMOVE_UNIT)
         params = dict()
-        if len(self.include)==0:
+        if len(include)==0:
             for i in range(len (names)):
                 if i in unitNumbs:
                     unit = units[0]
@@ -79,32 +89,36 @@ class fitsParser:
             #TODO: account for x as y //done 
             for name in include:
                 In, Out = False, False
-            
-                if bool(IN_REGEX.match(name)):
-                    name = re.sub('\s*-i\s*', "", name)
-                    In = True
-            
-                elif bool(OUT_REGEX.match(name)):
-                    name = re.sub('\s*-o\s*',"", name)
-                    Out = True
-
-                if bool(AS_REGEX.match(name)):
-                    realName = INCLUDE_NAME_REGEX.findall(name)[0]
-                    alias = ALIAS_REGEX.findall(name)[0]
-                    
-                else: 
-                    alias = name
-                    realName = name
                 
-                if bool(NUM_REGEX.match(realName)):
-                    realName = names[int(realName)-1]
+                if bool(INCLUDE_ALL.match(name)):
+                    self.includeAll = True
+                
+                else:
+                    if bool(IN_REGEX.match(name)):
+                        name = re.sub('\s*-i\s*', "", name)
+                        In = True
 
-                if In:
-                    self.inputs.append(alias)
-                elif Out:
-                    self.inputs.append(alias)
+                    elif bool(OUT_REGEX.match(name)):
+                        name = re.sub('\s*-o\s*',"", name)
+                        Out = True
 
-                params[realName] = {'format': formats[names.index(str(realName))], 'units': units[unitNumbs.index(names.index(str(realName)))] if names.index(str(realName)) in unitNumbs else None, 'alias': alias}
+                    if bool(AS_REGEX.match(name)):
+                        realName = INCLUDE_NAME_REGEX.findall(name)[0]
+                        alias = ALIAS_REGEX.findall(name)[0]
+
+                    else: 
+                        alias = name
+                        realName = name
+
+                    if bool(NUM_REGEX.match(realName)):
+                        realName = names[int(realName)-1]
+
+                    if In:
+                        self.inputs.append(alias)
+                    elif Out:
+                        self.inputs.append(alias)
+
+                    params[realName] = {'format': formats[names.index(str(realName))], 'units': units[unitNumbs.index(names.index(str(realName)))] if names.index(str(realName)) in unitNumbs else None, 'alias': alias}
                         
         return params
     
