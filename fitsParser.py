@@ -116,7 +116,7 @@ class fitsParser:
                     if In:
                         self.inputs.append(alias)
                     elif Out:
-                        self.inputs.append(alias)
+                        self.outputs.append(alias)
 
                     params[realName] = {'format': formats[names.index(str(realName))], 'units': units[unitNumbs.index(names.index(str(realName)))] if names.index(str(realName)) in unitNumbs else None, 'alias': alias}
                         
