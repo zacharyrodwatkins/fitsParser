@@ -27,13 +27,17 @@ There are two ways to sepcifiy which collums of the data to include:
 
 ## Other Commands
 
-  - '-all': Specifiy that all collums in the fits file should be included in the data frame. Other commands still aplly, 
+  - '-all': Specifiy that all collums in the fits file should be included in 				the data frame. Other commands still aplly, 
 			and aliases provided still hold.
   - '-i': Used to specify inputs, and as such will be added to the inputs list.
   - '-0': Specify outputs to be added to outputs list.
-
+  - '-c[x]: to specify order in wavelength for magnitudes is various band. 
+			This format allows for the automatic generation of colours. By 
+			default, colours are computed with the 2 nearest bands. If one 				wishes to comupute more colours, they could call makeColours(N=2) 				method on a fitsParser object, obviously specifying ones own value 				for N. x can be either an integer or decimal number
+	
 ## Other Notes on Syntax and Beyond
-  - All commands are to be on their own lines.
+  - All commands/fields are to be on their own lines.
+  - Specifiers are always preceded by a dash: - 
   - If either the file name or the commands are passed directly to the fitsParser constructor, they are given precedence over any
 	commands that may be secified in the text file.
 

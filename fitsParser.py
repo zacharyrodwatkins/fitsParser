@@ -5,7 +5,7 @@ import numpy as np
 from astropy.io import fits
 import pandas as pd
 
-#Regular expressions to parse the header
+#Regular expressions to parse the header/command file
 NAME_MATCH = re.compile("TTYPE[0-9]+\s*=\s*'\s*[^\s]+\s*'")
 REMOVE_NAME = re.compile("(TTYPE[0-9]+\s*=\s*'\s*)|(\s*')|(\s+)")
 FORMAT_MATCH = re.compile("TFORM[0-9]+\s*=\s*'\s*[^\s]+\s*'")
@@ -20,10 +20,11 @@ ALIAS_REGEX = re.compile("(?<=as\s).+")
 fileRegex = re.compile("from\s+[^\s]+\n|$")
 rfileRegex = re.compile("(from)|(\s+)|\n|$")
 NUM_REGEX = re.compile("[0-9]+")
-IN_REGEX = re.compile(".+-i")
-OUT_REGEX = re.compile(".+-o")
+IN_REGEX = re.compile(".+-i.*")
+OUT_REGEX = re.compile(".+-o.*")
 INCLUDE_ALL = re.compile("\s*-all\s*$|\n")
 COMMENT_REGEX = re.compile(".*#.*")
+COLOUR_REGEX = re.compile(".+-c[[][0-9]+[]].*")
 
 class fitsParser:
 
@@ -34,6 +35,8 @@ class fitsParser:
         self.inputs = list()
         self.outputs = list()
         self.includeAll = False
+        self._colourDic = dict()
+        self.colours = list()
 
         if(includefile != None):
             infile = open(includefile, "r")
@@ -51,6 +54,7 @@ class fitsParser:
         self.hduList = fits.open(self.filename)
         self.tableinfo = self.parseHeader(str(self.hduList[1].header), self.include) #Gather the collum names from the header file
         
+        
         if self.includeAll:
             Allinfo = self.parseHeader(str(self.hduList[1].header), list())
             for field in Allinfo.keys():
@@ -61,7 +65,9 @@ class fitsParser:
         for name in self.tableinfo.keys():
             self.data[self.tableinfo.get(name).get('alias')] = self.hduList[1].data.field(name).byteswap().newbyteorder()
         
-        
+        # can only make colours once everything is set up. If the users wants a different value for N, the can call
+        # makeColours again, and the dataFrame and colours list will be updated
+        self.makeColours()
         
         
     #Parse Header takes the header string of a fits file and depending on the arguments passed, retrives needed information
@@ -92,41 +98,11 @@ class fitsParser:
             
                 if bool(COMMENT_REGEX.match(name)):
                     name = fitsParser.findAndRemove(name, COMMENT_REGEX, re.compile("#.*"))
+                    name = name[0]
                     
-                if name!='':                                  
-            
-                    In, Out = False, False
+                if name!='':
+                    self._nameProcedure(name, params, formats, unitNumbs, units, names)
 
-                    if bool(INCLUDE_ALL.match(name)):
-                        self.includeAll = True
-
-                    else:
-                        if bool(IN_REGEX.match(name)):
-                            name = re.sub('\s*-i\s*', "", name)
-                            In = True
-
-                        elif bool(OUT_REGEX.match(name)):
-                            name = re.sub('\s*-o\s*',"", name)
-                            Out = True
-
-                        if bool(AS_REGEX.match(name)):
-                            realName = INCLUDE_NAME_REGEX.findall(name)[0]
-                            alias = ALIAS_REGEX.findall(name)[0]
-
-                        else: 
-                            alias = name
-                            realName = name
-
-                        if bool(NUM_REGEX.match(realName)):
-                            realName = names[int(realName)-1]
-
-                        if In:
-                            self.inputs.append(alias)
-                        elif Out:
-                            self.outputs.append(alias)
-
-                    params[realName] = {'format': formats[names.index(str(realName))], 'units': units[unitNumbs.index(names.index(str(realName)))] if names.index(str(realName)) in unitNumbs else None, 'alias': alias}
-                        
         return params
     
     #add a collum based on a collum name. If the collum name in the fits file is x, but one wants to load it under the name y, pass: x as y
@@ -161,3 +137,78 @@ class fitsParser:
     
     def __str__(self):
         return str(self.data)
+
+    #helper method to parser a line
+    #name is not the empty string
+    #name is not a comment
+    def _nameProcedure(self, name, params, formats, unitNumbs, units, names):
+        
+        In, Out = False, False
+        colour = -1
+
+        if bool(INCLUDE_ALL.match(name)):
+            self.includeAll = True
+
+        else:
+            #check for input output designation
+            if bool(IN_REGEX.match(name)):
+                name = re.sub('\s*-i\s*', "", name)
+                In = True
+                
+            elif bool(OUT_REGEX.match(name)):
+                name = re.sub('\s*-o\s*',"", name)
+                Out = True
+
+            #check for colour designation
+            if bool(COLOUR_REGEX.match(name)):
+                colour = int(float(fitsParser.findAndRemove(name, re.compile('-c[[][0-9]+[.]?[0-9]*[]]'), re.compile("(-c[[])|([]])"))[0]))
+                name = re.sub("-c[[][0-9]+[.]?[0-9]*[]]\s*", "", name)
+
+            if bool(AS_REGEX.match(name)):
+                realName = INCLUDE_NAME_REGEX.findall(name)[0]
+                alias = ALIAS_REGEX.findall(name)[0]
+
+            else: 
+                alias = name
+                realName = name
+
+            if bool(NUM_REGEX.match(realName)):
+                realName = names[int(realName)-1]
+
+            if In:
+                self.inputs.append(alias)
+            elif Out:
+                self.outputs.append(alias)
+            
+            if colour != -1:
+                self._colourDic[alias] = colour
+
+            params[realName] = {'format': formats[names.index(str(realName))], 'units': units[unitNumbs.index(names.index(str(realName)))] if names.index(str(realName)) in unitNumbs else None, 'alias': alias}
+    
+    #helper method to generate the colour list
+    #modifies 
+    def makeColours(self, N=2):
+            sortedColours = map(lambda x : x[0], 
+                                sorted(self._colourDic.items(), key=lambda x: x[1]))
+            colours = list()
+            print 'u_0' in sortedColours
+            print 'u_0' in self.data.keys()
+            
+            for name in sortedColours:
+                for i in range(sortedColours.index(name)+1, sortedColours.index(name)+1+N):
+                    
+                    if i>=len(sortedColours):
+                        break
+                    
+                    self.data[name+'-'+sortedColours[i]]=self.data[name]-self.data[sortedColours[i]]
+                    colours.append(name+'-'+sortedColours[i])
+                    
+            self.colours = colours           
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
