@@ -25,6 +25,7 @@ OUT_REGEX = re.compile(".+-o.*")
 INCLUDE_ALL = re.compile("\s*-all\s*$|\n")
 COMMENT_REGEX = re.compile(".*#.*")
 COLOUR_REGEX = re.compile(".+-c[[][0-9]+[]].*")
+UNCERT_REGEX = re.compile("(?<!\[\])d[^\s]+")
 
 class fitsParser:
 
@@ -37,6 +38,7 @@ class fitsParser:
         self.includeAll = False
         self._colourDic = dict()
         self.colours = list()
+        self.uncert = list()
 
         if(includefile != None):
             infile = open(includefile, "r")
@@ -141,6 +143,7 @@ class fitsParser:
     #helper method to parser a line
     #name is not the empty string
     #name is not a comment
+    #name should be valid syntax
     def _nameProcedure(self, name, params, formats, unitNumbs, units, names):
         
         In, Out = False, False
@@ -161,7 +164,8 @@ class fitsParser:
 
             #check for colour designation
             if bool(COLOUR_REGEX.match(name)):
-                colour = int(float(fitsParser.findAndRemove(name, re.compile('-c[[][0-9]+[.]?[0-9]*[]]'), re.compile("(-c[[])|([]])"))[0]))
+                colour = int(float(fitsParser.findAndRemove(name,
+                                                            re.compile('-c[[][0-9]+[.]?[0-9]*[]]'), re.compile("(-c[[])|([]])"))[0]))
                 name = re.sub("-c[[][0-9]+[.]?[0-9]*[]]\s*", "", name)
 
             if bool(AS_REGEX.match(name)):
@@ -174,6 +178,12 @@ class fitsParser:
 
             if bool(NUM_REGEX.match(realName)):
                 realName = names[int(realName)-1]
+            
+            if bool(UNCERT_REGEX.match(alias)):
+                self.uncert.append(alias)
+                
+            
+            alias = re.sub(r"\\", "", alias)
 
             if In:
                 self.inputs.append(alias)
@@ -191,9 +201,7 @@ class fitsParser:
             sortedColours = map(lambda x : x[0], 
                                 sorted(self._colourDic.items(), key=lambda x: x[1]))
             colours = list()
-            print 'u_0' in sortedColours
-            print 'u_0' in self.data.keys()
-            
+                       
             for name in sortedColours:
                 for i in range(sortedColours.index(name)+1, sortedColours.index(name)+1+N):
                     
