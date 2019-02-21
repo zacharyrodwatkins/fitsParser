@@ -26,6 +26,11 @@ INCLUDE_ALL = re.compile("\s*-all\s*$|\n")
 COMMENT_REGEX = re.compile(".*#.*")
 COLOUR_REGEX = re.compile(".+-c[[][0-9]+[]].*")
 UNCERT_REGEX = re.compile("(?<!\[\])d[^\s]+")
+LIST_REGEX = re.compile("[^\s]*[[]([^,]+,)+?[^,]+(?=[]])[]][^\s]*")
+CONTENTS_REGEX = re.compile("(?<=[[]).+?(?=[]])")
+PREFIX_REGEX = re.compile(".+(?=[[])")
+POSTFIX_REGEX = re.compile("(?<=[]]).+")
+SET_REGEX = re.compile("set\s+([A-Z]|[a-z])+\s*=\s*.+")
 
 class fitsParser:
 
@@ -39,6 +44,9 @@ class fitsParser:
         self._colourDic = dict()
         self.colours = list()
         self.uncert = list()
+        self.Ncolours = 2
+        self.input_uncert = list()
+        self.output_uncert = list()
 
         if(includefile != None):
             infile = open(includefile, "r")
@@ -68,8 +76,11 @@ class fitsParser:
             self.data[self.tableinfo.get(name).get('alias')] = self.hduList[1].data.field(name).byteswap().newbyteorder()
         
         # can only make colours once everything is set up. If the users wants a different value for N, the can call
-        # makeColours again, and the dataFrame and colours list will be updated
-        self.makeColours()
+        # makeColours again, and the dataFrame and colours list will be updated, or set colours = N in the include file
+        self.makeColours(N = self.Ncolours)
+        
+        #check for uncertainties matching inputs and ouputs
+        self.in_out_uncert()
         
         
     #Parse Header takes the header string of a fits file and depending on the arguments passed, retrives needed information
@@ -101,8 +112,11 @@ class fitsParser:
                 if bool(COMMENT_REGEX.match(name)):
                     name = fitsParser.findAndRemove(name, COMMENT_REGEX, re.compile("#.*"))
                     name = name[0]
+
+                if bool(SET_REGEX.match(name)):
+                    self.setStatement(name)
                     
-                if name!='':
+                elif name!='':
                     self._nameProcedure(name, params, formats, unitNumbs, units, names)
 
         return params
@@ -176,6 +190,19 @@ class fitsParser:
                 alias = name
                 realName = name
 
+            if(LIST_REGEX.match(realName)):
+                namelist = fitsParser._listParse(realName, alias)
+                for command in namelist:
+                    if In == True:
+                        command += "-i"
+                    elif Out == True:
+                        command += '-o'
+                    self._nameProcedure(command, params, formats, unitNumbs, units, names)
+                return
+
+            alias = alias.strip()
+            realName = realName.strip()
+
             if bool(NUM_REGEX.match(realName)):
                 realName = names[int(realName)-1]
             
@@ -184,7 +211,9 @@ class fitsParser:
                 
             
             alias = re.sub(r"\\", "", alias)
-
+            
+            
+            
             if In:
                 self.inputs.append(alias)
             elif Out:
@@ -213,10 +242,52 @@ class fitsParser:
                     
             self.colours = colours           
                         
-                        
-                        
-                        
-                        
-                        
-                        
-                        
+
+    @staticmethod
+    def _listParse(realName , alias): 
+        funk = lambda x : x[0] if len(x)>0 else ""
+        realPre = funk(PREFIX_REGEX.findall(realName))
+        realPost = funk(POSTFIX_REGEX.findall(realName))
+        aliasPre = funk(PREFIX_REGEX.findall(alias))
+        aliasPost= funk(POSTFIX_REGEX.findall(alias))
+        realContents = fitsParser.findAndSplit(realName, re.compile("(?<=[[]).+(?=[]])"), re.compile("\s*,\s*"))
+        aliasContents = fitsParser.findAndSplit(alias, re.compile("(?<=[[]).+(?=[]])"), re.compile("\s*,\s*"))
+        commands = list()
+        
+        for i in range(len(realContents)):
+            commands.append(realPre+realContents[i]+realPost+" as "+aliasPre+aliasContents[i]+aliasPost)
+
+        return commands
+    
+    def execSetColours(self, value):
+        N = int(value)
+        self.Ncolours = N
+    
+    def setStatement(self, statment):
+        statment = re.sub("\s*set\s*", "", statment)
+        field = fitsParser.findAndRemove(statment, re.compile('.+='), re.compile('\s*='))[0]
+        value = fitsParser.findAndRemove(statment, re.compile('=.+'), re.compile('=\s*'))[0]
+        field = str.strip(field)
+        value = str.strip(value)
+        switch = {
+            'colours' : fitsParser.execSetColours
+        }
+        func = switch.get(field)
+        func(self, value)
+        
+    def in_out_uncert(self):
+        #uncertanites corresponding to sepcific inputs and outputs should differ only by a leading d
+        self.input_uncert = filter(lambda name : name[1:] in self.inputs, self.uncert)
+        copy = filter(lambda uncert : uncert not in self.input_uncert, self.uncert)
+        self.output_uncert = filter(lambda name : name[1:] in self.outputs, copy)   
+        x = 2
+        
+
+    @staticmethod
+    def findAndSplit(target, find, splitRe):
+        findlist = find.findall(target)
+        splitlist = list()
+        for x in findlist:
+            for string in splitRe.split(x):
+                splitlist.append(string)
+        return splitlist
