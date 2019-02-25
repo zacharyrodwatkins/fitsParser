@@ -34,6 +34,16 @@ There are two ways to sepcifiy which collums of the data to include:
   - '-c[x]: to specify order in wavelength for magnitudes is various band. 
 			This format allows for the automatic generation of colours. By 
 			default, colours are computed with the 2 nearest bands. If one 				wishes to comupute more colours, they could call makeColours(N=2) 				method on a fitsParser object, obviously specifying ones own value 				for N. x can be either an integer or decimal number
+
+## Multi-file support
+
+The parser is now able to handle inputs from multiple fits files. This is specified by the usual from <filename> statement. All other commands pertain to the above filestatement, and switch to a new file upon reading another from <filename> command. It is now imperative that all files begin with the from <filename> statement. An IOException is thrown if no filename is specified.
+
+####	Acessing Data From Other Files
+
+Data from multiple files is represented recursively, with a given fitsParser object having a field poiting to either another fitsParser object or None.
+When parsing the commands file, the first set of commands is taken to be the parent file. All the fields will apply to this set of commands, as though there were only one fits file to parse. There are methods implemented to acesses fields of the other fitsParser object, as well as the objects themselves.
+
 	
 ## Other Notes on Syntax and Beyond
   - All commands/fields are to be on their own lines.
