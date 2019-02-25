@@ -31,10 +31,15 @@ CONTENTS_REGEX = re.compile("(?<=[[]).+?(?=[]])")
 PREFIX_REGEX = re.compile(".+(?=[[])")
 POSTFIX_REGEX = re.compile("(?<=[]]).+")
 SET_REGEX = re.compile("set\s+([A-Z]|[a-z])+\s*=\s*.+")
+MULTIBLOCK_REGEX = re.compile("from(?:.+\n*)+?(?=$|(?:from))")
 
 class fitsParser:
 
-    def __init__(self, filename = None, include = list(), includefile = None):
+
+    def __init__(self, filename = None, include = None, includefile = None):
+
+        if include == None:
+            include = list()
         
         self.data = pd.DataFrame()
         self.include = list(include)
@@ -47,15 +52,37 @@ class fitsParser:
         self.Ncolours = 2
         self.input_uncert = list()
         self.output_uncert = list()
+        self.FileCommands = dict()
+        self.__super__ = None
+        self.__other__ = None
 
         if(includefile != None):
-            infile = open(includefile, "r")
-            inString = infile.read()
+            if (includefile != 'Do Recursion'):
+                infile = open(includefile, "r")
+                inString = infile.read()
+                thisCode = MULTIBLOCK_REGEX.findall(inString)
+                infile.close()
+
+            else:
+                thisCode = include
+                self.include = list()
+
+            if(len(thisCode)==0):
+                raise(IOError('No File Specified'))
+            
+            elif (len(thisCode)>1):
+                self.__other__ = fitsParser(include=thisCode[1:], includefile='Do Recursion')
+                self.__other__.__super__ = self
+            
+            inString = thisCode[0]
             self.filename = fitsParser.findAndRemove(inString, fileRegex, rfileRegex)[0]
+
             inString = re.sub(fileRegex,"", inString)
             for line in re.compile('(.+(?=$|\n))').findall(inString):
                 self.include.append(line)
-            infile.close()
+            
+        
+            
         
         #give precedent to filename passed directly
         if filename!=None:
@@ -227,8 +254,8 @@ class fitsParser:
     #helper method to generate the colour list
     #modifies 
     def makeColours(self, N=2):
-            sortedColours = map(lambda x : x[0], 
-                                sorted(self._colourDic.items(), key=lambda x: x[1]))
+            sortedColours = [map(lambda x : x[0], 
+                                sorted(self._colourDic.items(), key=lambda x: x[1]))]
             colours = list()
                        
             for name in sortedColours:
@@ -280,7 +307,7 @@ class fitsParser:
         self.input_uncert = filter(lambda name : name[1:] in self.inputs, self.uncert)
         copy = filter(lambda uncert : uncert not in self.input_uncert, self.uncert)
         self.output_uncert = filter(lambda name : name[1:] in self.outputs, copy)   
-        x = 2
+    
         
 
     @staticmethod
@@ -291,3 +318,22 @@ class fitsParser:
             for string in splitRe.split(x):
                 splitlist.append(string)
         return splitlist
+
+    def getFiles(self):
+        return self.getField('filename')
+
+    def getField(self, field):
+        return [self.__dict__[field]] + self.__other__.__dict__[field] if self.__other__ != None else [self.__dict__[field]]
+    
+    def getData(self):
+        return self.getField('data')
+
+    def joinData(self):
+        dataList = self.getData()
+        
+        if len(dataList) == 1:
+            return self.data
+
+        #collect the common fields between the data
+        fields = filter(lambda x : [x in data.keys for data in dataList[1:]].all(), dataList[0])
+        print(fields)
