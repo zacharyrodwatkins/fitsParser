@@ -254,8 +254,8 @@ class fitsParser:
     #helper method to generate the colour list
     #modifies 
     def makeColours(self, N=2):
-            sortedColours = [map(lambda x : x[0], 
-                                sorted(self._colourDic.items(), key=lambda x: x[1]))]
+            sortedColours = list(map(lambda x : x[0], 
+                                sorted(self._colourDic.items(), key=lambda x: x[1])))
             colours = list()
                        
             for name in sortedColours:
@@ -323,7 +323,7 @@ class fitsParser:
         return self.getField('filename')
 
     def getField(self, field):
-        return [self.__dict__[field]] + self.__other__.__dict__[field] if self.__other__ != None else [self.__dict__[field]]
+        return [self.__dict__[field]] + self.__other__.getField(field) if self.__other__ != None else [self.__dict__[field]]
     
     def getData(self):
         return self.getField('data')
@@ -334,6 +334,7 @@ class fitsParser:
         if len(dataList) == 1:
             return self.data
 
+        all_true = lambda x : False not in x
         #collect the common fields between the data
-        fields = filter(lambda x : [x in data.keys for data in dataList[1:]].all(), dataList[0])
+        fields = list(filter(lambda x : all_true(pd.DataFrame([x in data.keys()  for data in dataList[1:]])), dataList[0].keys()))
         print(fields)
