@@ -327,6 +327,9 @@ class fitsParser:
     
     def getData(self):
         return self.getField('data')
+    
+    def getAllObj(self):
+        return [self] + getAllObj(self.__other__) if self.__other__!= None else [self]
 
     def joinData(self):
         dataList = self.getData()
